@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+ <html>
+ <head>
+     <meta charset="UTF-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Roof Designer & 3D Visualizer</title>
+     <script src="https://cdn.tailwindcss.com"></script>
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+     <style>
+        /* General styling for the page and splash screen */
+        #splashScreen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #111; display: flex; align-items: center;
+            justify-content: center; z-index: 9999; flex-direction: column;
+            transition: opacity 0.5s ease-out;
+        }
+        #splashContent { text-align: center; color: white; }
+        #splashContent img { width: 120px; height: 120px; object-fit: contain; margin-bottom: 20px; }
+        .progress-container { width: 300px; background-color: #444; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+        #progressBar { height: 10px; width: 0%; background-color: #4CAF50; }
+        html, body {
+             margin: 0; padding: 0; background: #222; overflow: hidden;
+             width: 100%; height: 100%; font-family: 'Inter', sans-serif;
+        }
+        /* Canvas and 3D container styling */
+         #canvas {
+             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+             touch-action: none; cursor: crosshair; z-index: 0;
+         }
+         #threeDContainer {
+             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+             z-index: 1; visibility: hidden;
+         }
+         /* UI Controls and Info Boxes styling */
+         .controls-container, .info-box {
+              position: absolute; z-index: 10;
+              background: rgba(34, 34, 34, 0.85);
+              padding: 10px; border-radius: 12px;
+              color: white; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+              border: 1px solid rgba(255,255,255,0.2);
+              backdrop-filter: blur(8px);
+              -webkit-backdrop-filter: blur(8px);
+         }
+         .controls-container { top: 10px; left: 10px; }
+         .info-box { top: 10px; right: 10px; max-width: 400px; }
+         #elementInfoBox { top: 240px; display: none; }
+         .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+         #roofControls, #coveringControls { display: none; }
+         .info-box p { margin-bottom: 5px; font-size: 14px; }
+         .info-box h3 { margin-top: 0; margin-bottom: 10px; font-size: 16px; color: #4CAF50; border-bottom: 1px solid #4CAF50; padding-bottom: 5px; }
+         .info-box h4 { margin-top: 10px; margin-bottom: 5px; font-size: 15px; color: #66BB6A; }
+         .info-box ul { list-style: none; padding-left: 0; margin-top: 5px; }
+         .info-box ul li { font-size: 13px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+         .controls button, .controls select, .controls label, .controls input {
+             background-color: #4CAF50; border: none; color: white; padding: 4px 8px;
+             text-align: center; display: inline-block; font-size: 11px;
+             margin: 1px; cursor: pointer; border-radius: 5px;
+             transition: background-color 0.3s ease, transform 0.1s ease;
+             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+         }
+         .controls button:hover, .controls select:hover { background-color: #45a049; transform: translateY(-1px); }
+         .controls select, .controls input[type="number"] { background-color: #007bff; }
+         /* Modal and Tooltip styling */
+         #fileInput { display: none; }
+         .modal-container {
+             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7);
+             display: flex; justify-content: center; align-items: center; z-index: 1000;
+         }
+         .modal-content {
+             background: #333; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+             color: white; text-align: left; max-width: 400px; width: 90%; border: 1px solid rgba(255,255,255,0.2);
+         }
+         .modal-content h3 { color: #4CAF50; margin-top: 0; }
+         .modal-content input, .modal-content select, .modal-content textarea {
+             width: 100%; padding: 8px; margin-top: 5px; border-radius: 6px;
+             border: 1px solid #555; background: #222; color: white;
+         }
+         .modal-buttons { display: flex; justify-content: space-around; margin-top: 20px; }
+         .modal-buttons button { width: auto; padding: 10px 15px; }
+         #tooltip, #angleIndicator {
+             position: absolute; z-index: 100; background: rgba(0, 0, 0, 0.8); color: white;
+             padding: 10px; border-radius: 5px; pointer-events: none; visibility: hidden;
+             font-size: 12px; max-width: 300px;
+         }
+         /* Layers Panel styling */
+        #layersPanel { margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 10px; }
+        #layersHeader { cursor: pointer; font-weight: bold; color: #4CAF50; user-select: none; }
+        #layersList { list-style: none; padding: 0; margin-top: 8px; max-height: 140px; overflow-y: auto; display: none; }
+        #layersList li { display: flex; align-items: center; padding: 5px; border-radius: 4px; cursor: pointer; margin-bottom: 5px; background-color: rgba(255,255,255,0.05); }
+        #layersList li.active { background-color: #007bff; }
+        #layersList li input[type="checkbox"] { margin-right: 10px; }
+        #layersList li span { flex-grow: 1; }
+        
+        /* MODIFIED: Truss Designer Styling */
+        #trussDesignerContainer {
+            display: none; 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background-color: rgba(20, 20, 20, 0.85); 
+            z-index: 100;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            /* Added flex to center content */
+            align-items: center;
+            justify-content: center;
+        }
+        /* NEW: Wrapper for designer content */
+        #trussDesignerContent {
+            position: relative;
+            width: 85vw;
+            height: 75vh;
+            background: #1e1e1e;
+            border: 1px solid #4CAF50;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        #trussCanvas {
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        #trussDesignerControls {
+            position: absolute; 
+            top: 15px; 
+            right: 15px; 
+            background: rgba(34, 34, 34, 0.85);
+            padding: 15px; border-radius: 12px; color: white; 
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        #trussDesignerControls h3 { color: #4CAF50; margin-top: 0; }
+        #trussDesignerControls p { font-size: 13px; max-width: 250px; }
+        #trussDesignerControls button {
+            width: 100%; padding: 10px; border-radius: 6px; border: none; 
+            margin-top: 10px; cursor: pointer; font-weight: bold;
+        }
+
+        /* Add this new CSS block to your <style> section */
+#trussDesignerToolbar button {
+    background-color: #555;
+    color: white;
+    border: 1px solid #777;
+    padding: 8px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+#trussDesignerToolbar button:hover {
+    background-color: #666;
+    border-color: #888;
+}
+
+body.modal-active {
+    cursor: default !important;
+}
+     </style>
+ </head>
+ <body>
+    <div id="splashScreen">
+      <div id="splashContent">
+        <img id="splashImage" src="https://placehold.co/120x120/111111/FFFFFF?text=Loading" alt="Loading..." />
+        <div class="progress-container"><div id="progressBar"></div></div>
+        <p>Loading... Please wait</p>
+      </div>
+    </div>
+
+    <div class="controls-container">
+         <div id="mainControls" class="controls">
+             <button id="importBtn">Import File</button>
+             <input type="file" id="fileInput" accept="image/*,application/pdf">
+             <button id="setScaleBtn">Set Scale</button>
+             <label for="drawMode">Mode:</label>
+             <select id="drawMode">
+                 <option value="roof-member">Draw Member</option>
+                 <option value="roof-covering">Draw Covering</option>
+                 <option value="roof-truss">Design Roof Truss</option>
+                 <option value="move">Move</option>
+                 <option value="copy">Copy</option>
+                 <option value="mirror">Mirror</option>
+                 <option value="rotate">Rotate</option>
+                 <option value="distance-marker">Distance Marker</option>
+                 <option value="lines">Lines</option>
+                 <option value="eraser">Eraser</option>
+             </select>
+             <button id="undoBtn">Undo</button>
+             <button id="clearBtn">Clear All</button>
+             <button id="toggle3D">Toggle 3D</button>
+         </div>
+          <div id="roofControls" class="controls">
+             <label for="memberWidth">Width (m):</label>
+             <input type="number" id="memberWidth" value="0.1" step="0.01" style="width: 60px;">
+             <label for="memberDepth">Depth (m):</label>
+             <input type="number" id="memberDepth" value="0.05" step="0.01" style="width: 60px;">
+         </div>
+         <div id="coveringControls" class="controls">
+             <label for="coveringThickness">Thickness (m):</label>
+             <input type="number" id="coveringThickness" value="0.02" step="0.01" style="width: 70px;">
+             </div>
+        <div id="layersPanel">
+            <h4 id="layersHeader">Layers &#9662;</h4>
+            <div id="layerControls" class="controls" style="display:none;">
+                 <button id="addLayerBtn">Add</button>
+                 <button id="deleteLayerBtn">Delete</button>
+            </div>
+            <ul id="layersList"></ul>
+        </div>
+     </div>
+
+    <div id="totalQuantitiesBox" class="info-box">
+         <h3>Element Take-off</h3>
+         </div>
+     <div id="elementInfoBox" class="info-box">
+         <h3>Element Details</h3>
+         <div id="elementInfoContent"><p>Hover over an element in 3D view or select one in 2D to see details.</p></div>
+     </div>
+
+     <canvas id="canvas"></canvas>
+     <div id="threeDContainer"></div>
+     <div id="tooltip"></div>
+     <div id="angleIndicator"></div>
+
+     <div id="trussDesignerContainer" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(20, 20, 20, 0.85); z-index: 100; backdrop-filter: blur(5px); align-items: center; justify-content: center;">
+    <div id="trussDesignerContent" style="position: relative; width: 90vw; height: 85vh; background: #1e1e1e; border: 1px solid #4CAF50; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column;">
+        
+        <div id="trussDesignerToolbar" style="background: rgba(45, 45, 45, 0.9); padding: 8px; display: flex; gap: 8px; border-bottom: 1px solid #444;">
+            <button id="trussToolDraw" title="Draw Members">✏️ Draw</button>
+            <button id="trussToolLine" title="Measure Line">📏 Line</button>
+            <button id="trussToolEraser" title="Erase">🗑️ Erase</button>
+            <div style="flex-grow: 1;"></div> <button id="finishTrussBtn" style="background-color:#4CAF50;">✅ Finish & Place</button>
+            <button id="cancelTrussBtn" style="background-color:#f44336;">❌ Cancel</button>
+        </div>
+        
+        <canvas id="trussCanvas" style="flex-grow: 1; cursor: crosshair;"></canvas>
+    </div>
+</div>
+
+     <script>
+         // --- Globals ---
+         const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
+         let img = new Image(), scale = 1, originX = 0, originY = 0;
+         let layers = [];
+         let activeLayerId = null;
+         let currentShape = {};
+         let pixelsPerMeter = 1, scaleMode = false, scalePoints = [];
+         const ERASER_RADIUS = 15;
+         const LOOP_THRESHOLD = 10;
+         let isPanning = false, isErasing = false;
+         let referenceStartPoint = null;
+         let distanceMarkerState = { memberShape: null, measurements: [] };
+         let isShiftDown = false; // Add this new variable
+         let lineToolState = { isActive: false, points: [] }; // Add this new global state
+         // --- State for Move/Copy/Mirror/Rotate ---
+         let selectionState = {
+             mode: null, selectedShape: null, originalShape: null, originalPoints: null, 
+             originalColor: null, layerId: null, shapeIndex: -1, handle: { x: 0, y: 0 },
+         };
+         let mirrorState = { selectedShape: null, originalColor: null, layerId: null, axisPoints: [] };
+         // NEW: State for rotation
+         let rotationState = { selectedShape: null, originalColor: null, layerId: null, shapeIndex: -1 };
+         
+         // --- Member Drawing State ---
+         let memberDrawingState = 'idle'; // idle, defining_end_point
+
+         // --- Roof Truss Designer State ---
+         // --- In the Globals section ---
+// Replace the existing trussDesignerState declaration with this one
+
+let trussDesignerState = {
+    isActive: false,
+    tool: 'draw-member', // 'draw-member', 'draw-line', 'eraser'
+    members: [],
+    lines: [], // For measurement lines inside the designer
+    currentMember: { points: [] },
+    currentLine: { points: [] }, // For drawing a measurement line
+    isErasing: false,
+    baseZ: 0,
+    placementStep: 'idle',
+    designedTruss: null,
+    placementStartPoint: null,
+    trussName: 'Truss',
+    totalFasteners: 0,
+};
+         let trussCanvas, trussCtx, trussOriginX, trussOriginY, trussScale = 50; // 50 pixels per meter
+
+         // --- 3D Scene Variables ---
+         let scene, camera, renderer, controls, threeDContainer = document.getElementById('threeDContainer');
+         let is3DMode = false, animationFrameId, raycaster, mouse = new THREE.Vector2();
+         let tooltip = document.getElementById('tooltip');
+         let angleIndicator = document.getElementById('angleIndicator');
+
+         // --- PDF Handling ---
+         async function handlePdfFile(file) {
+             const reader = new FileReader();
+             reader.onload = async (event) => {
+                 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+                 const loadingTask = pdfjsLib.getDocument({ data: event.target.result });
+                 try {
+                     const pdf = await loadingTask.promise;
+                     const numPages = pdf.numPages;
+                     let pageNumStr = numPages > 1 ? await customPrompt('Select PDF Page', `This PDF has ${numPages} pages. Enter a page number to import (1-${numPages}):`, '1') : '1';
+                     const pageNum = parseInt(pageNumStr, 10);
+                     if (!pageNumStr || isNaN(pageNum) || pageNum < 1 || pageNum > numPages) { customAlert('Invalid page number. Import cancelled.'); return; }
+                     const page = await pdf.getPage(pageNum);
+                     const renderScale = 2.0;
+                     const viewport = page.getViewport({ scale: renderScale });
+                     const tempCanvas = document.createElement('canvas');
+                     tempCanvas.width = viewport.width; tempCanvas.height = viewport.height;
+                     const renderContext = { canvasContext: tempCanvas.getContext('2d'), viewport: viewport };
+                     await page.render(renderContext).promise;
+                     loadImageFromDataURL(tempCanvas.toDataURL('image/png'));
+                 } catch (error) { console.error('Error processing PDF:', error); customAlert('Failed to load or render the PDF page. See console for details.'); }
+             };
+             reader.readAsArrayBuffer(file);
+         }
+
+         // --- Utility & Modal Functions ---
+         function customAlert(message) {
+    return new Promise(resolve => {
+        document.body.classList.add('modal-active');
+        const m = document.createElement('div');
+        m.className = 'modal-container';
+        const c = document.createElement('div');
+        c.className = 'modal-content';
+        c.innerHTML = `<h3>Notification</h3><p style="margin-bottom:15px;font-size:14px;">${message}</p><div class="modal-buttons"><button id="modalOk" style="background-color:#4CAF50">OK</button></div>`;
+        m.appendChild(c);
+        document.body.appendChild(m);
+        const cl = () => {
+            document.body.removeChild(m);
+            document.body.classList.remove('modal-active');
+            resolve();
+        };
+        c.querySelector('#modalOk').onclick = cl;
+    });
+}
+
+        function customPrompt(title, message, defaultValue = '', inputType = 'text') {
+    return new Promise(resolve => {
+        document.body.classList.add('modal-active');
+        const m = document.createElement('div');
+        m.className = 'modal-container';
+        const c = document.createElement('div');
+        c.className = 'modal-content';
+        const inputElement = inputType === 'textarea' ? `<textarea rows="3" style="width:100%;padding:8px;margin-bottom:15px;border-radius:6px;border:1px solid #555;background:#222;color:white;">${defaultValue}</textarea>` : `<input type="text" value="${defaultValue}" style="width:100%;padding:8px;margin-bottom:15px;border-radius:6px;border:1px solid #555;background:#222;color:white;">`;
+        c.innerHTML = `<h3>${title}</h3><p style="margin-bottom:15px;font-size:14px;">${message}</p>${inputElement}<div class="modal-buttons"><button id="modalOk" style="background-color:#4CAF50">OK</button><button id="modalCancel" style="background-color:#f44336">Cancel</button></div>`;
+        m.appendChild(c);
+        document.body.appendChild(m);
+        const i = c.querySelector(inputType === 'textarea' ? 'textarea' : 'input');
+        i.focus();
+        i.select();
+        const cl = v => {
+            document.body.removeChild(m);
+            document.body.classList.remove('modal-active');
+            resolve(v);
+        };
+        c.querySelector('#modalOk').onclick = () => cl(i.value);
+        c.querySelector('#modalCancel').onclick = () => cl(null);
+        if (inputType === 'text') {
+            i.onkeydown = e => { if (e.key === 'Enter') cl(i.value); };
+        }
+    });
+}
+    function choicePrompt(title, message, choices) {
+    return new Promise(resolve => {
+        document.body.classList.add('modal-active');
+        const m = document.createElement('div');
+        m.className = 'modal-container';
+        // Use more robust IDs for buttons
+        let buttonsHTML = choices.map(ch => `<button id="choice-btn-${ch.id}" style="background-color:${ch.color||'#007bff'}">${ch.text}</button>`).join('');
+        m.innerHTML = `<div class="modal-content"><h3>${title}</h3><p>${message}</p><div class="modal-buttons">${buttonsHTML}</div></div>`;
+        document.body.appendChild(m);
+        const cl = v => {
+            document.body.removeChild(m);
+            document.body.classList.remove('modal-active');
+            resolve(v);
+        };
+        choices.forEach(ch => {
+            // Use corresponding query selector
+            m.querySelector(`#choice-btn-${ch.id}`).onclick = () => cl(ch.id);
+        });
+    });
+}
+
+         function zCoordPromptWithPitch(title, startZ, horizontalDistance) {
+             return new Promise(resolve => {
+                 const m = document.createElement('div'); m.className = 'modal-container';
+                 const c = document.createElement('div'); c.className = 'modal-content';
+                 c.innerHTML = `
+                     <h3>${title}</h3>
+                     <label for="zInput" style="display:block; margin-bottom:5px;">Enter END Z-coordinate (m):</label>
+                     <input type="number" id="zInput" value="${startZ.toFixed(2)}" step="0.1" style="width:100%;padding:8px;margin-bottom:10px;border-radius:6px;border:1px solid #555;background:#222;color:white;">
+                     <p style="font-size:14px; color:#ccc;">Resulting Pitch: <strong id="pitchDisplay" style="color:#4CAF50;">0.0°</strong></p>
+                     <div class="modal-buttons"><button id="modalOk" style="background-color:#4CAF50">OK</button><button id="modalCancel" style="background-color:#f44336">Cancel</button></div>`;
+                 m.appendChild(c); document.body.appendChild(m);
+                 const zInput = c.querySelector('#zInput'), pitchDisplay = c.querySelector('#pitchDisplay');
+                 const updatePitch = () => {
+                     const endZ = parseFloat(zInput.value) || 0; const deltaZ = endZ - startZ;
+                     let pitch = (horizontalDistance > 0.001) ? Math.atan2(deltaZ, horizontalDistance) * 180 / Math.PI : 0;
+                     pitchDisplay.textContent = `${pitch.toFixed(1)}°`;
+                 };
+                 zInput.addEventListener('input', updatePitch); updatePitch(); zInput.focus(); zInput.select();
+                 const cl = v => { document.body.removeChild(m); resolve(v); };
+                 c.querySelector('#modalOk').onclick = () => cl(parseFloat(zInput.value));
+                 c.querySelector('#modalCancel').onclick = () => cl(null);
+                 zInput.onkeydown = e => { if (e.key === 'Enter') cl(parseFloat(zInput.value)); };
+             });
+         }
+         
+        // MODIFIED: Function to prompt for truss member properties with a dropdown
+        function promptForTrussMemberProperties(defaults = {}) {
+            return new Promise(resolve => {
+                const m = document.createElement('div');
+                m.className = 'modal-container';
+                const c = document.createElement('div');
+                c.className = 'modal-content';
+                c.innerHTML = `
+                    <h3>Truss Member Properties</h3>
+                    <label for="trussMemberWidth" style="display:block; margin-top:10px; margin-bottom:5px;">Width (m):</label>
+                    <input type="number" id="trussMemberWidth" value="${defaults.width || '0.1'}" step="0.01">
+                    <label for="trussMemberDepth" style="display:block; margin-top:10px; margin-bottom:5px;">Depth (m):</label>
+                    <input type="number" id="trussMemberDepth" value="${defaults.depth || '0.05'}" step="0.01">
+                    <label for="trussMemberMaterial" style="display:block; margin-top:10px; margin-bottom:5px;">Material:</label>
+                    <select id="trussMemberMaterial">
+                        <option value="Wood" ${defaults.material === 'Wood' ? 'selected' : ''}>Wood</option>
+                        <option value="Steel" ${defaults.material === 'Steel' ? 'selected' : ''}>Steel</option>
+                    </select>
+                    <div class="modal-buttons">
+                        <button id="modalOk" style="background-color:#4CAF50">OK</button>
+                        <button id="modalCancel" style="background-color:#f44336">Cancel</button>
+                    </div>`;
+                m.appendChild(c);
+                document.body.appendChild(m);
+                
+                const wInput = c.querySelector('#trussMemberWidth');
+                wInput.focus();
+                wInput.select();
+
+                const cl = (value) => {
+                    document.body.removeChild(m);
+                    resolve(value);
+                };
+
+                c.querySelector('#modalOk').onclick = () => {
+                    cl({
+                        width: parseFloat(c.querySelector('#trussMemberWidth').value) || 0.1,
+                        depth: parseFloat(c.querySelector('#trussMemberDepth').value) || 0.05,
+                        material: c.querySelector('#trussMemberMaterial').value || 'Wood'
+                    });
+                };
+                c.querySelector('#modalCancel').onclick = () => cl(null);
+            });
+        }
+
+
+         // --- Initialization ---
+         function setup() { 
+            resetCurrentShape(); 
+            trussCanvas = document.getElementById('trussCanvas');
+            trussCtx = trussCanvas.getContext('2d');
+
+            window.addEventListener('resize', resize); 
+            document.getElementById('importBtn').addEventListener('click', () => document.getElementById('fileInput').click()); 
+            document.getElementById('fileInput').addEventListener('change', (e) => { const file = e.target.files[0]; if (!file) return; if (file.type.startsWith('image/')) { const reader = new FileReader(); reader.onload = (event) => loadImageFromDataURL(event.target.result); reader.readAsDataURL(file); } else if (file.type === 'application/pdf') { handlePdfFile(file); } else { customAlert('Unsupported file type. Please select an image or PDF file.'); } e.target.value = ''; }); 
+            document.getElementById('setScaleBtn').addEventListener('click', () => { scaleMode = true; scalePoints = []; resetAllModes(); customAlert('Set Scale: Click the first point on the drawing.'); draw(); }); 
+            document.getElementById('drawMode').addEventListener('change', async (e) => { 
+                await resetAllModes(); 
+                const mode = e.target.value; 
+                document.getElementById('roofControls').style.display = (mode === 'roof-member' || mode === 'roof-truss') ? 'flex' : 'none'; 
+                document.getElementById('coveringControls').style.display = mode === 'roof-covering' ? 'flex' : 'none'; 
+                if (['move', 'copy', 'mirror', 'rotate'].includes(mode)) { // MODIFIED: Added rotate
+                    canvas.style.cursor = 'pointer'; 
+                    customAlert(`'${mode.charAt(0).toUpperCase() + mode.slice(1)}' mode activated. Click an element to select it.`); 
+                } 
+                else if (mode === 'eraser') { canvas.style.cursor = 'cell'; } 
+                else if (mode === 'distance-marker') { customAlert('Distance Marker: Click on a roof member to begin measuring.'); canvas.style.cursor = 'help'; } 
+                else if (mode === 'roof-truss') { await startTrussDesigner(); }
+                else { canvas.style.cursor = 'crosshair'; } 
+            }); 
+            document.getElementById('undoBtn').addEventListener('click', () => { 
+                if (trussDesignerState.isActive) {
+                    if (trussDesignerState.currentMember.points.length > 0) {
+                        trussDesignerState.currentMember.points.pop();
+                    } else if (trussDesignerState.members.length > 0) {
+                        trussDesignerState.members.pop();
+                    }
+                    drawTrussDesigner();
+                } else {
+                    if (currentShape.points.length > 0) { currentShape.points.pop(); if (currentShape.points.length === 0) { referenceStartPoint = null; } } 
+                    else if (getActiveLayer() && getActiveLayer().shapes.length > 0) { const rem = getActiveLayer().shapes.pop(); if (rem._3DObject && scene) scene.remove(rem._3DObject); } 
+                    draw(); drawTotalsBox(); 
+                }
+            }); 
+            document.getElementById('clearBtn').addEventListener('click', async () => { const choice = await choicePrompt('Confirm Clear', `Are you sure you want to clear all elements from all layers?`, [ {id: 'yes', text: 'Yes, Clear All', color: '#f44336'}, {id: 'no', text: 'Cancel', color: '#777'} ]); if (choice === 'yes') { if (scene) layers.forEach(layer => layer.shapes.forEach(s => { if(s._3DObject) scene.remove(s._3DObject); })); layers.forEach(layer => layer.shapes = []); resetAllModes(); distanceMarkerState = { memberShape: null, measurements: [] }; draw(); drawTotalsBox(); } }); 
+            document.getElementById('toggle3D').addEventListener('click', toggle3DView); 
+            canvas.addEventListener('mousedown', onMouseDown); canvas.addEventListener('mouseup', onMouseUp); canvas.addEventListener('mousemove', onMouseMove); canvas.addEventListener('wheel', onWheel); canvas.addEventListener('click', onClick); canvas.addEventListener('contextmenu', e => e.preventDefault()); 
+            window.addEventListener('keydown', onKeyDown);
+            window.addEventListener('keyup', onKeyUp); // Add this line 
+            document.getElementById('drawMode').dispatchEvent(new Event('change')); 
+            document.getElementById('addLayerBtn').addEventListener('click', () => addLayer()); 
+            document.getElementById('deleteLayerBtn').deleteLayer; 
+            document.getElementById('layersHeader').addEventListener('click', () => { const list = document.getElementById('layersList'); const controls = document.getElementById('layerControls'); const isHidden = list.style.display === 'none'; list.style.display = isHidden ? 'block' : 'none'; controls.style.display = isHidden ? 'flex' : 'none'; document.getElementById('layersHeader').innerHTML = `Layers ${isHidden ? '&#9652;' : '&#9662;'}`; }); 
+            
+            // Truss designer listeners
+            document.getElementById('finishTrussBtn').addEventListener('click', finishTrussDesign);
+            document.getElementById('cancelTrussBtn').addEventListener('click', cancelTrussDesign);
+            trussCanvas.addEventListener('mousemove', onTrussCanvasMouseMove);
+            trussCanvas.addEventListener('click', onTrussCanvasClick);
+
+            // ADD THESE NEW LISTENERS FOR THE TOOLS
+const trussTools = { draw: 'trussToolDraw', line: 'trussToolLine', eraser: 'trussToolEraser' };
+const setActiveTrussTool = (selectedTool) => {
+    trussDesignerState.tool = selectedTool;
+    Object.values(trussTools).forEach(id => document.getElementById(id).style.backgroundColor = '#6c757d');
+    if (selectedTool === 'draw-member') document.getElementById(trussTools.draw).style.backgroundColor = '#007bff';
+    else if (selectedTool === 'draw-line') document.getElementById(trussTools.line).style.backgroundColor = '#007bff';
+    else if (selectedTool === 'eraser') document.getElementById(trussTools.eraser).style.backgroundColor = '#dc3545'; // Red for eraser
+};
+document.getElementById(trussTools.draw).addEventListener('click', () => setActiveTrussTool('draw-member'));
+document.getElementById(trussTools.line).addEventListener('click', () => setActiveTrussTool('draw-line'));
+document.getElementById(trussTools.eraser).addEventListener('click', () => setActiveTrussTool('eraser'));
+
+            resize(); 
+            addLayer("Default Layer"); 
+        }
+
+         async function resetAllModes() {
+            resetCurrentShape();
+            resetSelectionState();
+            resetMirrorState();
+            resetRotationState(); // NEW
+            if (trussDesignerState.isActive) {
+                await cancelTrussDesign();
+            }
+            trussDesignerState = { isActive: false, members: [], currentMember: { points: [] }, baseZ: 0, placementStep: 'idle', designedTruss: null, placementStartPoint: null, trussName: 'Truss', totalFasteners: 0 };
+            lineToolState = { isActive: false, points: [] }; // Add this line
+         }
+
+         function resetCurrentShape() {
+             currentShape = { type: document.getElementById('drawMode').value, points: [], isClosed: false, name: null, color: null, description: null };
+             memberDrawingState = 'idle';
+             angleIndicator.style.visibility = 'hidden';
+             referenceStartPoint = null;
+         }
+
+         function resetSelectionState() {
+             if (selectionState.selectedShape) {
+                 const original = selectionState.mode === 'copy' ? selectionState.originalShape : selectionState.selectedShape;
+                 if (original) original.color = selectionState.originalColor;
+             }
+             selectionState = { mode: null, selectedShape: null, originalShape: null, originalPoints: null, originalColor: null, layerId: null, shapeIndex: -1, handle: { x: 0, y: 0 } };
+             const currentMode = document.getElementById('drawMode').value;
+             canvas.style.cursor = ['move','copy','mirror','rotate'].includes(currentMode) ? 'pointer' : 'crosshair';
+             draw();
+         }
+
+         function resetMirrorState() {
+            if (mirrorState.selectedShape) {
+                mirrorState.selectedShape.color = mirrorState.originalColor;
+            }
+            mirrorState = { selectedShape: null, originalColor: null, layerId: null, axisPoints: [] };
+            canvas.style.cursor = 'pointer';
+            draw();
+         }
+
+         // NEW: Function to reset rotation state
+         function resetRotationState() {
+            if (rotationState.selectedShape) {
+                rotationState.selectedShape.color = rotationState.originalColor;
+            }
+            rotationState = { selectedShape: null, originalColor: null, layerId: null, shapeIndex: -1 };
+            canvas.style.cursor = 'pointer';
+            draw();
+         }
+         
+         function loadImageFromDataURL(dataURL) { const i=new Image();i.onload=()=>{img=i;scale=1;originX=0;originY=0;layers = []; addLayer("Default Layer");fullClear3DScene();resetCurrentShape();draw();drawTotalsBox();};i.src=dataURL;}
+        
+         function resize() { canvas.width = window.innerWidth;
+             canvas.height = window.innerHeight; 
+             if (renderer && camera) { const w = threeDContainer.clientWidth, h = threeDContainer.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+              if (trussDesignerState.isActive) {
+                    const bounds = trussCanvas.getBoundingClientRect();
+                    trussCanvas.width = bounds.width;
+                    trussCanvas.height = bounds.height;
+                    trussOriginX = trussCanvas.width / 2; // Center horizontally
+                    trussOriginY = trussCanvas.height / 2; // CHANGE THIS LINE to center vertically
+                    drawTrussDesigner();
+                } 
+              draw(); drawTotalsBox(); }
+
+         // --- Main Drawing Loop ---
+         function draw(cursorX = null, cursorY = null) {
+             ctx.setTransform(1, 0, 0, 1, 0, 0);
+             ctx.clearRect(0, 0, canvas.width, canvas.height);
+             ctx.translate(originX, originY);
+             ctx.scale(scale, scale);
+             if (img.src) ctx.drawImage(img, 0, 0);
+
+             layers.forEach(layer => {
+                if (layer.visible) {
+                    layer.shapes.forEach(s => drawShape(ctx, s, s.color || '#4CAF50', s.type === 'roof-covering' ? (new THREE.Color(s.color).getStyle() + '40') : 'transparent'));
+                }
+             });
+             
+                if (document.getElementById('drawMode').value === 'roof-member' && memberDrawingState === 'defining_end_point' && cursorX !== null) {
+                const startPoint = currentShape.points[0];
+                let mouseImgX = (cursorX - originX) / scale;
+                let mouseImgY = (cursorY - originY) / scale;
+
+                // NEW: Snapping logic for visual feedback
+                if (isShiftDown) {
+                    const dx = Math.abs(mouseImgX - startPoint.x);
+                    const dy = Math.abs(mouseImgY - startPoint.y);
+                    if (dx > dy) { // Snap horizontally (lateral alignment)
+                        mouseImgY = startPoint.y;
+                    } else { // Snap vertically (plumb alignment)
+                        mouseImgX = startPoint.x;
+                    }
+                }
+
+                drawShape(ctx, { points: [startPoint, {x: mouseImgX, y: mouseImgY}] }, 'orange', 'transparent');
+            } else if (!selectionState.selectedShape && !mirrorState.selectedShape && !rotationState.selectedShape) { // MODIFIED
+                 drawShape(ctx, currentShape, 'orange', 'transparent');
+             } else if (selectionState.selectedShape) {
+                drawShape(ctx, selectionState.selectedShape, 'lime', selectionState.selectedShape.type === 'roof-covering' ? '#90EE9040' : 'transparent', 3);
+             } else if (rotationState.selectedShape) { // NEW
+                drawShape(ctx, rotationState.selectedShape, '#FFD700', 'transparent', 3); // Gold color for rotation
+             }
+
+             if (scaleMode && scalePoints.length > 0) {
+                 ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; ctx.beginPath(); ctx.arc(scalePoints[0].x, scalePoints[0].y, 10 / scale, 0, 2 * Math.PI); ctx.fill();
+             }
+             
+             if (referenceStartPoint && cursorX !== null) {
+                const mouseImgX = (cursorX - originX) / scale; const mouseImgY = (cursorY - originY) / scale;
+                const start = referenceStartPoint; const end = { x: mouseImgX, y: mouseImgY };
+                const realDx = Math.abs(end.x - start.x) / pixelsPerMeter; const realDy = Math.abs(end.y - start.y) / pixelsPerMeter;
+                ctx.setLineDash([4 / scale, 3 / scale]); ctx.strokeStyle = '#00FFFF'; ctx.lineWidth = 1.5 / scale;
+                ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+                ctx.setLineDash([]); ctx.fillStyle = '#00FFFF'; ctx.font = `${12 / scale}px Arial`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(`${realDx.toFixed(2)} m`, start.x + (end.x - start.x) / 2, start.y - 5 / scale);
+                ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(`${realDy.toFixed(2)} m`, end.x + 5 / scale, start.y + (end.y - start.y) / 2);
+            }
+            
+            if (distanceMarkerState.memberShape) {
+                const member = distanceMarkerState.memberShape;
+                ctx.strokeStyle = 'rgba(255, 0, 255, 0.4)'; ctx.lineWidth = 6 / scale;
+                ctx.beginPath(); ctx.moveTo(member.points[0].x, member.points[0].y); ctx.lineTo(member.points[1].x, member.points[1].y); ctx.stroke();
+                const textStyle = { font: `bold ${13 / scale}px Arial`, fillStyle: '#FFFF00', shadowColor: 'black', shadowBlur: 5, textAlign: 'center', textBaseline: 'bottom' };
+                for (let i = 0; i < distanceMarkerState.measurements.length; i++) {
+                    const marker = distanceMarkerState.measurements[i];
+                    ctx.fillStyle = '#FF00FF'; ctx.beginPath(); ctx.arc(marker.point2D.x, marker.point2D.y, 5 / scale, 0, 2 * Math.PI); ctx.fill();
+                    if (i > 0) {
+                        const prevMarker = distanceMarkerState.measurements[i-1];
+                        ctx.strokeStyle = 'rgba(255, 0, 255, 0.9)'; ctx.lineWidth = 2 / scale; ctx.setLineDash([]);
+                        ctx.beginPath(); ctx.moveTo(prevMarker.point2D.x, prevMarker.point2D.y); ctx.lineTo(marker.point2D.x, marker.point2D.y); ctx.stroke();
+                        const midX = (marker.point2D.x + prevMarker.point2D.x) / 2;
+                        const midY = (marker.point2D.y + prevMarker.point2D.y) / 2;
+                        Object.assign(ctx, textStyle);
+                        ctx.fillText(`${marker.distFromLast.toFixed(2)} m`, midX, midY - 5 / scale);
+                    }
+                }
+                ctx.shadowBlur = 0;
+                if (document.getElementById('drawMode').value === 'distance-marker' && cursorX !== null && distanceMarkerState.measurements.length > 0) {
+                    const lastMarker = distanceMarkerState.measurements[distanceMarkerState.measurements.length - 1];
+                    const mouseImgX = (cursorX - originX) / scale, mouseImgY = (cursorY - originY) / scale;
+                    const currentProjected2D = projectPointOnLineSegment({x: mouseImgX, y: mouseImgY}, member.points[0], member.points[1]);
+                    const currentProjected3D = interpolate3DPoint(currentProjected2D, member);
+                    const segmentDist = currentProjected3D.distanceTo(lastMarker.point3D);
+                    ctx.setLineDash([5 / scale, 5 / scale]); ctx.strokeStyle = 'rgba(255, 0, 255, 0.7)'; ctx.lineWidth = 2 / scale;
+                    ctx.beginPath(); ctx.moveTo(lastMarker.point2D.x, lastMarker.point2D.y); ctx.lineTo(currentProjected2D.x, currentProjected2D.y); ctx.stroke(); ctx.setLineDash([]);
+                    const midX = (lastMarker.point2D.x + currentProjected2D.x) / 2;
+                    const midY = (lastMarker.point2D.y + currentProjected2D.y) / 2;
+                    Object.assign(ctx, textStyle);
+                    ctx.fillText(`${segmentDist.toFixed(2)} m`, midX, midY - 5/scale);
+                    const totalDist = currentProjected3D.distanceTo(distanceMarkerState.measurements[0].point3D);
+                    ctx.fillText(`Total: ${totalDist.toFixed(2)} m`, currentProjected2D.x, currentProjected2D.y - 25/scale);
+                    ctx.shadowBlur = 0;
+                }
+            }
+            
+            if (document.getElementById('drawMode').value === 'mirror' && mirrorState.axisPoints.length === 1 && cursorX !== null) {
+                const p1 = mirrorState.axisPoints[0];
+                const mouseImgX = (cursorX - originX) / scale; const mouseImgY = (cursorY - originY) / scale;
+                ctx.setLineDash([8 / scale, 4 / scale]); ctx.strokeStyle = 'cyan'; ctx.lineWidth = 1.5 / scale;
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(mouseImgX, mouseImgY); ctx.stroke(); ctx.setLineDash([]);
+            }
+
+            if (trussDesignerState.placementStep === 'defining_end' && cursorX !== null) {
+                const p1 = trussDesignerState.placementStartPoint;
+                const mouseImgX = (cursorX - originX) / scale; const mouseImgY = (cursorY - originY) / scale;
+                ctx.setLineDash([10 / scale, 5 / scale]); ctx.strokeStyle = '#39FF14'; ctx.lineWidth = 2.5 / scale;
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(mouseImgX, mouseImgY); ctx.stroke(); ctx.setLineDash([]);
+                    
+            }
+
+            // Add this new block for the live "Lines" tool preview
+    if (lineToolState.isActive && cursorX !== null) {
+        const startPoint = lineToolState.points[0];
+        const mouseImgX = (cursorX - originX) / scale;
+        const mouseImgY = (cursorY - originY) / scale;
+
+        // Draw the temporary line
+        ctx.beginPath();
+        ctx.moveTo(startPoint.x, startPoint.y);
+        ctx.lineTo(mouseImgX, mouseImgY);
+        ctx.strokeStyle = '#FF0000'; // Bright yellow for visibility
+        ctx.setLineDash([5 / scale, 5 / scale]);
+        ctx.lineWidth = 1.5 / scale;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Calculate distance and angle for the live text
+        const dx_m = (mouseImgX - startPoint.x) / pixelsPerMeter;
+        const dy_m = (mouseImgY - startPoint.y) / pixelsPerMeter;
+        const dist = Math.hypot(dx_m, dy_m);
+        // Use negative dy for conventional angle (0 degrees is to the right)
+        const angle = Math.atan2(-dy_m, dx_m) * 180 / Math.PI;
+        const text = `L: ${dist.toFixed(2)} m  |  A: ${angle.toFixed(1)}°`;
+
+        // Draw the live text next to the cursor (using screen coordinates)
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform for screen-space text
+        ctx.font = `${14 / scale}px Arial`;
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'left';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 5;
+        ctx.fillText(text, cursorX + 15, cursorY - 10);
+        ctx.shadowBlur = 0;
+    }
+
+             if (cursorX !== null) {
+                 ctx.setTransform(1, 0, 0, 1, 0, 0);
+                 const currentMode = document.getElementById('drawMode').value;
+                 if (currentMode === 'eraser') {
+                     ctx.beginPath(); ctx.arc(cursorX, cursorY, ERASER_RADIUS, 0, 2 * Math.PI); ctx.strokeStyle = 'red'; ctx.lineWidth = 1; ctx.stroke();
+                 } else if (!scaleMode && !referenceStartPoint && !distanceMarkerState.memberShape && !selectionState.selectedShape && !mirrorState.selectedShape && !rotationState.selectedShape && trussDesignerState.placementStep === 'idle') { // MODIFIED
+                     ctx.beginPath(); ctx.moveTo(cursorX, 0); ctx.lineTo(cursorX, canvas.height);
+                     ctx.moveTo(0, cursorY); ctx.lineTo(canvas.width, cursorY);
+                     ctx.strokeStyle = '#FF00FF'; ctx.lineWidth = 0.8; ctx.stroke();
+                 }
+             }
+
+             
+         }
+         function drawShape(context, shape, strokeColor, fillColor, lineWidth = 2, customScale = scale) { 
+            if (!shape || !shape.points || shape.points.length === 0) return; 
+            context.strokeStyle = strokeColor; 
+            context.fillStyle = fillColor; 
+            context.lineWidth = lineWidth / customScale; 
+            context.beginPath(); 
+            context.moveTo(shape.points[0].x, shape.points[0].y);
+            for(let i = 1; i < shape.points.length; i++) { context.lineTo(shape.points[i].x, shape.points[i].y); }
+            if (shape.isClosed) { context.closePath(); }
+            if (shape.type === 'placed-truss') { context.setLineDash([10 / customScale, 5 / customScale]); context.lineWidth = 4 / customScale; 
+            } else if (shape.type === 'measurement-line') {
+        const p1 = shape.points[0];
+        const p2 = shape.points[1];
+
+        // Draw the main line
+        context.strokeStyle = shape.color || '#FF0000';
+        context.lineWidth = 1.5 / customScale;
+        context.setLineDash([5 / customScale, 5 / customScale]);
+        context.beginPath();
+        context.moveTo(p1.x, p1.y);
+        context.lineTo(p2.x, p2.y);
+        context.stroke();
+        context.setLineDash([]);
+
+        // Draw end-point markers (small circles)
+        context.fillStyle = shape.color || '#FF0000';
+        context.beginPath();
+        context.arc(p1.x, p1.y, 4 / customScale, 0, 2 * Math.PI);
+        context.fill();
+        context.beginPath();
+        context.arc(p2.x, p2.y, 4 / customScale, 0, 2 * Math.PI);
+        context.fill();
+
+        // Draw the measurement text on the line
+        const dx_m = (p2.x - p1.x) / pixelsPerMeter;
+        const dy_m = (p2.y - p1.y) / pixelsPerMeter;
+        const dist = Math.hypot(dx_m, dy_m);
+        const angle = Math.atan2(-dy_m, dx_m) * 180 / Math.PI;
+        const text = `${dist.toFixed(2)} m, ${angle.toFixed(1)}°`;
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
+        context.font = `bold ${13 / customScale}px Arial`;
+        context.textAlign = 'center';
+        context.textBaseline = 'bottom';
+        context.shadowColor = 'black';
+        context.shadowBlur = 5;
+        context.fillText(text, midX, midY - 5 / customScale);
+        context.shadowBlur = 0;
+    }
+            context.stroke(); 
+            context.setLineDash([]);
+            if (shape.isClosed && fillColor !== 'transparent') { context.fill(); } 
+        } 
+
+         function drawTotalsBox() { let tL=0, tV=0, tA=0, tC=0, tF=0; layers.forEach(layer => { if (layer.visible) { layer.shapes.forEach(s => { const m = calculateShapeMetrics(s); tL += m.length || 0; tV += m.volume || 0; tA += m.area || 0; tC += m.count || 0; tF += m.fasteners || 0; }); } }); document.getElementById('totalQuantitiesBox').innerHTML = `<h3>Element Take-off</h3><p>Total Member Length: ${tL.toFixed(2)} m</p><p>Total Member Volume: ${tV.toFixed(2)} m³</p><p>Total Covering Area: ${tA.toFixed(2)} m²</p><p>Total Count: ${tC}</p><p>Total Fasteners: ${tF}</p><p>Scale: 1 meter = ${pixelsPerMeter.toFixed(2)} pixels</p>`; } // MODIFIED: Added Total Fasteners
+
+         // --- Calculations ---
+         function calculateShapeMetrics(shape) {
+             let length = 0, volume = 0, count = 0, area = 0, pitch = 0, fasteners = 0; // MODIFIED
+             if (shape.type === 'roof-member' && shape.points.length === 2) {
+                 const p1 = shape.points[0]; const p2 = shape.points[1];
+                 const dx = (p2.x - p1.x) / pixelsPerMeter; const dy = (p2.y - p1.y) / pixelsPerMeter;
+                 const dz = p2.z - p1.z; const horizontalLength = Math.hypot(dx, dy);
+                 length = Math.hypot(horizontalLength, dz);
+                 volume = length * shape.width * shape.depth;
+                 pitch = Math.atan2(dz, horizontalLength) * 180 / Math.PI;
+                 count = 1;
+             } else if (shape.type === 'roof-covering' && shape.isClosed && shape.points.length >= 3) {
+                 const pts3D = shape.points.map(p => new THREE.Vector3(p.x / pixelsPerMeter, p.y / pixelsPerMeter, p.z));
+                 for (let i = 1; i < pts3D.length - 1; i++) {
+                     const triangle = new THREE.Triangle(pts3D[0], pts3D[i], pts3D[i + 1]);
+                     area += triangle.getArea();
+                 }
+                 count = 1;
+                 pitch = 'Variable';
+             } else if (shape.type === 'placed-truss') {
+                count = 1;
+                fasteners = shape.fastenerCount || 0; // MODIFIED
+                if (shape._3DObject && shape._3DObject.children) {
+                    shape._3DObject.children.forEach(memberMesh => {
+                        if (memberMesh.geometry && memberMesh.geometry.parameters) {
+                            const memberLength = memberMesh.geometry.parameters.depth || 0;
+                            length += memberLength;
+                            volume += memberLength * (memberMesh.geometry.parameters.width || 0) * (memberMesh.geometry.parameters.height || 0);
+                        }
+                    });
+                } else { // Fallback if 3D object doesn't exist (less accurate)
+                    const placementLengthPx = Math.hypot(shape.points[1].x - shape.points[0].x, shape.points[1].y - shape.points[0].y);
+                     if (shape.designMeta && shape.designMeta.designWidth > 0 && shape.trussData) {
+                         const scaleFactor = placementLengthPx / shape.designMeta.designWidth;
+                         shape.trussData.forEach(member => {
+                             const p1 = member.points[0], p2 = member.points[1];
+                             const memberLenPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                             const memberLenM = (memberLenPx * scaleFactor) / pixelsPerMeter;
+                             const memberWidth = member.width || shape.width;
+                             const memberDepth = member.depth || shape.depth;
+                             length += memberLenM;
+                             volume += memberLenM * memberWidth * memberDepth;
+                         });
+                     }
+                }
+             }
+             return { length, volume, count, area, pitch, fasteners }; // MODIFIED
+         }
+         
+         // --- Selection & Eraser Logic ---
+         function findShapeAtPoint(imgX, imgY) { for (const layer of [...layers].reverse()) { if (layer.visible) { for (let i = layer.shapes.length - 1; i >= 0; i--) { const shape = layer.shapes[i]; if (isPointOnShape(imgX, imgY, shape)) { return { layer, shape, index: i }; } } } } return null; }
+         function eraseAtPoint(imgX, imgY) { const found = findShapeAtPoint(imgX, imgY); if (found) { if (scene && found.shape._3DObject) scene.remove(found.shape._3DObject); found.layer.shapes.splice(found.index, 1); draw(); drawTotalsBox(); } }
+         function isPointOnShape(x, y, shape) { const hitRadius = (ERASER_RADIUS / scale); if (shape.points.length > 1) { for (let i = 0; i < shape.points.length; i++) { const p1 = shape.points[i]; const p2 = shape.points[(i + 1) % shape.points.length]; if (!shape.isClosed && i === shape.points.length -1) continue; if (distToSegment({x,y}, p1, p2) < hitRadius) return true; } } return false; }
+         function distToSegment(p, v, w) { const l2 = (v.x - w.x)**2 + (v.y - w.y)**2; if (l2 == 0) return Math.hypot(p.x - v.x, p.y - v.y); let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2; t = Math.max(0, Math.min(1, t)); return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y))); }
+         
+         function projectPointOnLineSegment(p, v, w) {
+            const l2 = (v.x - w.x)**2 + (v.y - w.y)**2;
+            if (l2 == 0) return { ...v, t: 0 };
+            let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y), t: t };
+         }
+
+         // NEW: Advanced helper to find all possible connection points near a cursor
+function findNearbyConnectionPoints(searchPoint) {
+    const connections = [];
+    const searchRadius = (ERASER_RADIUS / scale); // Use eraser radius as search tolerance
+
+    for (const layer of layers) {
+        if (!layer.visible) continue;
+        for (const shape of layer.shapes) {
+            if (shape.type === 'roof-member') {
+                if (distToSegment(searchPoint, shape.points[0], shape.points[1]) < searchRadius) {
+                    const projected2D = projectPointOnLineSegment(searchPoint, shape.points[0], shape.points[1]);
+                    const projected3D = interpolate3DPoint(projected2D, shape);
+                    connections.push({
+                        name: shape.name || 'Member',
+                        point2D: projected2D,
+                        point3D: projected3D,
+                    });
+                }
+            } else if (shape.type === 'placed-truss') {
+                // Unpack the truss to check its individual members in world space
+                const startPt2D = shape.points[0]; const endPt2D = shape.points[1];
+                const dx = endPt2D.x - startPt2D.x, dy = endPt2D.y - startPt2D.y;
+                const angle = Math.atan2(dy, dx);
+                const placementLengthPx = Math.hypot(dx, dy);
+                const scaleFactor = (shape.designMeta.designWidth > 0) ? (placementLengthPx / shape.designMeta.designWidth) : 1;
+                
+                // Helper to transform a truss design point to a world 2D point
+                const transformPoint = p => {
+                    const scaledX = (p.x - shape.designMeta.minX) * scaleFactor;
+                    const rotatedX = scaledX * Math.cos(angle);
+                    const rotatedY = scaledX * Math.sin(angle);
+                    return { x: startPt2D.x + rotatedX, y: startPt2D.y + rotatedY };
+                };
+                
+                for (const member of shape.trussData) {
+                    const p1_world = transformPoint(member.points[0]);
+                    const p2_world = transformPoint(member.points[1]);
+                    
+                    if (distToSegment(searchPoint, p1_world, p2_world) < searchRadius) {
+                        const projected2D_world = projectPointOnLineSegment(searchPoint, p1_world, p2_world);
+                        
+                        // Now we need to find the Z coordinate for this point on this specific member
+                        const z1 = shape.baseZ - ((member.points[0].y - shape.designMeta.maxY) / trussScale);
+                        const z2 = shape.baseZ - ((member.points[1].y - shape.designMeta.maxY) / trussScale);
+                        const interpolatedZ = z1 + projected2D_world.t * (z2 - z1);
+                        
+                        connections.push({
+                            name: `${shape.name} Member`,
+                            point2D: { x: projected2D_world.x, y: projected2D_world.y },
+                            point3D: { z: interpolatedZ } // We only need Z for this logic
+                        });
+                    }
+                }
+            }
+        }
+    }
+    return connections;
+}
+
+         function interpolate3DPoint(projectedPoint2D, memberShape) {
+            const p1 = memberShape.points[0]; const p2 = memberShape.points[1];
+            const iW = img.src ? img.width : canvas.width;
+            const iH = img.src ? img.height : canvas.height;
+            const t = projectedPoint2D.t;
+            const x_3d = (p1.x + t * (p2.x - p1.x) - iW/2) / pixelsPerMeter;
+            const y_3d = -((p1.y + t * (p2.y - p1.y) - iH/2) / pixelsPerMeter);
+            const z_3d = p1.z + t * (p2.z - p1.z);
+            return new THREE.Vector3(x_3d, y_3d, z_3d);
+         }
+
+         function reflectPoint(point, p1, p2) {
+            const dx = p2.x - p1.x; const dy = p2.y - p1.y;
+            if (dx === 0 && dy === 0) return { ...point };
+            const d2 = dx * dx + dy * dy;
+            const a = (dx * dx - dy * dy) / d2;
+            const b = 2 * dx * dy / d2;
+            const x_shifted = point.x - p1.x; const y_shifted = point.y - p1.y;
+            const newX = a * x_shifted + b * y_shifted + p1.x;
+            const newY = b * x_shifted - a * y_shifted + p1.y;
+            return { x: newX, y: newY, z: point.z };
+         }
+
+         // --- Event Handlers ---
+
+// Place this new function with your other event handlers like onMouseDown, onKeyDown, etc.
+function onKeyUp(e) {
+    if (e.key === 'Shift') {
+        isShiftDown = false;
+        // Redraw to remove the visual snapping guide when Shift is released
+        const r = canvas.getBoundingClientRect();
+        draw(e.clientX - r.left, e.clientY - r.top);
+    }
+}
+
+         function onMouseDown(e) {
+             e.preventDefault();
+             if (trussDesignerState.isActive) return; // Main canvas events ignored when designer is active
+             lastX = e.clientX; lastY = e.clientY;
+             const drawMode = document.getElementById('drawMode').value;
+             const r = canvas.getBoundingClientRect();
+             const iX = (e.clientX - r.left - originX) / scale;
+             const iY = (e.clientY - r.top - originY) / scale;
+
+             if (e.button === 1) { isPanning = true; } 
+             else if (e.button === 0) {
+                 mouseDown = true;
+                 if (drawMode === 'eraser') { isErasing = true; eraseAtPoint(iX, iY); } 
+             }
+         }
+         function onMouseUp(e) { e.preventDefault(); if (e.button === 1) { isPanning = false; } else if (e.button === 0) { mouseDown = false; isErasing = false; } }
+         
+         function onMouseMove(e) {
+    // This guard clause is the core of the fix
+    if (document.body.classList.contains('modal-active')) return;
+
+    if (trussDesignerState.isActive) return;
+    const r = canvas.getBoundingClientRect();
+    const sX = e.clientX - r.left;
+    const sY = e.clientY - r.top;
+    const iX = (sX - originX) / scale;
+    const iY = (sY - originY) / scale;
+
+    if (isPanning) {
+        originX += e.clientX - lastX;
+        originY += e.clientY - lastY;
+    } else if (isErasing && mouseDown) {
+        eraseAtPoint(iX, iY);
+    } else if (selectionState.selectedShape) {
+        const dx = iX - selectionState.handle.x;
+        const dy = iY - selectionState.handle.y;
+        const basePoints = selectionState.mode === 'move' ? selectionState.originalPoints : selectionState.originalShape.points;
+        selectionState.selectedShape.points.forEach((p, index) => {
+            p.x = basePoints[index].x + dx;
+            p.y = basePoints[index].y + dy;
+        });
+        if (is3DMode) addShapeTo3DScene(selectionState.selectedShape, selectionState.layerId, selectionState.shapeIndex, true);
+    }
+
+    const drawMode = document.getElementById('drawMode').value;
+    if (drawMode === 'roof-member' && memberDrawingState === 'defining_end_point') {
+        angleIndicator.style.visibility = 'visible';
+    } else {
+        angleIndicator.style.visibility = 'hidden';
+    }
+    lastX = e.clientX;
+    lastY = e.clientY;
+    draw(sX, sY);
+}
+         function onWheel(e) { e.preventDefault(); if (trussDesignerState.isActive) return; const r=canvas.getBoundingClientRect(),mX=e.clientX-r.left,mY=e.clientY-r.top,iX=(mX-originX)/scale,iY=(mY-originY)/scale,z=e.deltaY<0?1.1:0.9,nS=Math.max(0.1,Math.min(10,scale*z));originX-=iX*(nS-scale);originY-=iY*(nS-scale);scale=nS;draw(); }
+         
+    async function onClick(e) {
+    if (isPanning || (e.button !== 0) || trussDesignerState.isActive) return;
+    
+    const r = canvas.getBoundingClientRect(), iX = (e.clientX - r.left - originX) / scale, iY = (e.clientY - r.top - originY) / scale;
+    
+    if (scaleMode) {
+       if (scalePoints.length === 0) {
+           scalePoints.push({ x: iX, y: iY });
+           await customAlert('Set Scale: Click the second point on the drawing.');
+       } else {
+           scalePoints.push({ x: iX, y: iY });
+           const distPx = Math.hypot(scalePoints[1].x - scalePoints[0].x, scalePoints[1].y - scalePoints[0].y);
+           if (distPx < 1) { await customAlert('The selected points are too close. Please try again.'); scalePoints = []; return; }
+           let distM_str = await customPrompt('Set Scale', 'Enter the real-world distance between the two points (in meters):', '1');
+           if (distM_str && !isNaN(parseFloat(distM_str)) && parseFloat(distM_str) > 0) {
+               pixelsPerMeter = distPx / parseFloat(distM_str);
+               await customAlert(`Scale set successfully: 1 meter is now ${pixelsPerMeter.toFixed(2)} pixels.`);
+           } else { await customAlert('Invalid distance entered. Scale not set.'); }
+           scaleMode = false; scalePoints = [];
+           draw(); drawTotalsBox();
+       }
+       return;
+    }
+    
+   if (trussDesignerState.placementStep !== 'idle') {
+       if (trussDesignerState.placementStep === 'defining_start') {
+           trussDesignerState.placementStartPoint = { x: iX, y: iY };
+           trussDesignerState.placementStep = 'defining_end';
+           await customAlert("Start point defined. Click to set the truss end point and place it.");
+       } else if (trussDesignerState.placementStep === 'defining_end') {
+           const endPoint = { x: iX, y: iY };
+           await placeDesignedTruss(trussDesignerState.placementStartPoint, endPoint);
+           await customAlert(`Truss "${trussDesignerState.trussName}" placed successfully.`);
+           await resetAllModes();
+           document.getElementById('drawMode').value = 'move';
+           document.getElementById('drawMode').dispatchEvent(new Event('change'));
+       }
+       draw();
+       return;
+   }
+
+    const currentMode = document.getElementById('drawMode').value;
+   if (currentMode === 'lines') {
+        if (!getActiveLayer()) { customAlert("Please add or select a layer first."); return; }
+        if (lineToolState.points.length === 0) { 
+            lineToolState.points.push({ x: iX, y: iY });
+            lineToolState.isActive = true;
+        } else { 
+            lineToolState.points.push({ x: iX, y: iY });
+            const newLine = { type: 'measurement-line', points: [...lineToolState.points], isClosed: false, color: '#FF0000', name: 'Measurement' };
+            getActiveLayer().shapes.push(newLine);
+            lineToolState = { isActive: false, points: [] }; 
+            drawTotalsBox();
+        }
+    }
+
+   if (['move', 'copy'].includes(currentMode)) {
+       if (selectionState.selectedShape) { 
+           const friendlyMode = selectionState.mode === 'copy' ? 'Copy' : 'Move';
+           if (selectionState.mode === 'copy') {
+               const newCopy = selectionState.selectedShape;
+               newCopy.color = selectionState.originalColor;
+               const layer = layers.find(l => l.id === selectionState.layerId);
+               layer.shapes.push(newCopy);
+               if (is3DMode) addShapeTo3DScene(newCopy, layer.id, layer.shapes.length - 1);
+           } else { selectionState.selectedShape.color = selectionState.originalColor; }
+           resetSelectionState(); drawTotalsBox();
+           await customAlert(`${friendlyMode} complete. Select another element or change modes.`);
+       } else { 
+           const found = findShapeAtPoint(iX, iY);
+           if (found) {
+               selectionState.mode = currentMode;
+               selectionState.layerId = found.layer.id;
+               selectionState.shapeIndex = found.index;
+               selectionState.handle = { x: iX, y: iY };
+               selectionState.originalColor = found.shape.color;
+               if (currentMode === 'move') {
+                   selectionState.selectedShape = found.shape;
+                   selectionState.originalPoints = JSON.parse(JSON.stringify(found.shape.points));
+               } else {
+                   selectionState.originalShape = found.shape;
+                   selectionState.selectedShape = JSON.parse(JSON.stringify(found.shape));
+                   if (selectionState.selectedShape._3DObject) delete selectionState.selectedShape._3DObject;
+               }
+               found.shape.color = 'lime';
+               document.getElementById('elementInfoContent').innerHTML = formatShapeInfo(found.shape, calculateShapeMetrics(found.shape));
+               await customAlert(`Element "${found.shape.name}" selected. Click a new location to ${currentMode} it.`);
+           }
+       }
+       draw(); return;
+   }
+   
+   if (currentMode === 'mirror') {
+       if (!mirrorState.selectedShape) {
+           const found = findShapeAtPoint(iX, iY);
+           if (found) {
+               mirrorState.selectedShape = found.shape;
+               mirrorState.originalColor = found.shape.color;
+               mirrorState.layerId = found.layer.id;
+               found.shape.color = 'cyan'; 
+               await customAlert("Element selected. Click the first point of the mirror axis.");
+               draw();
+           }
+       } else if (mirrorState.axisPoints.length === 0) {
+           mirrorState.axisPoints.push({ x: iX, y: iY });
+           await customAlert("First axis point defined. Click the second point.");
+       } else {
+           mirrorState.axisPoints.push({ x: iX, y: iY });
+           const newShape = JSON.parse(JSON.stringify(mirrorState.selectedShape));
+           newShape.color = mirrorState.originalColor;
+           if (newShape._3DObject) delete newShape._3DObject;
+           newShape.points = newShape.points.map(p => reflectPoint(p, mirrorState.axisPoints[0], mirrorState.axisPoints[1]));
+           const layer = layers.find(l => l.id === mirrorState.layerId);
+           if (layer) {
+               layer.shapes.push(newShape);
+               if (is3DMode) addShapeTo3DScene(newShape, layer.id, layer.shapes.length - 1);
+           }
+           await customAlert("Mirror operation complete.");
+           resetMirrorState(); drawTotalsBox();
+       }
+       return;
+   }
+   
+    // --- MODIFIED: ROTATION NOW WORKS ON MEMBERS AND TRUSSES ---
+    if (currentMode === 'rotate') {
+        const found = findShapeAtPoint(iX, iY);
+        // Allow rotation if the found shape is a member OR a placed truss
+        if (found && (found.shape.type === 'roof-member' || found.shape.type === 'placed-truss')) {
+            rotationState.selectedShape = found.shape;
+            rotationState.originalColor = found.shape.color;
+            rotationState.layerId = found.layer.id;
+            rotationState.shapeIndex = found.index;
+            found.shape.color = '#FFD700';
+            draw();
+            
+            const angleStr = await customPrompt("Rotate Element", "Enter rotation angle in degrees (plan view):", "90");
+            const angle = parseFloat(angleStr);
+
+            if (angleStr === null || isNaN(angle)) {
+                await customAlert("Rotation cancelled.");
+                resetRotationState();
+                return;
+            }
+            
+            const shape = rotationState.selectedShape;
+            const p1 = shape.points[0]; const p2 = shape.points[1];
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const angleRad = angle * Math.PI / 180;
+            const cosA = Math.cos(angleRad);
+            const sinA = Math.sin(angleRad);
+            
+            const rotate = (p) => {
+                const relX = p.x - midX; const relY = p.y - midY;
+                const newX = relX * cosA - relY * sinA + midX;
+                const newY = relX * sinA + relY * cosA + midY;
+                return { ...p, x: newX, y: newY };
+            };
+            
+            shape.points[0] = rotate(p1);
+            shape.points[1] = rotate(p2);
+
+            if (is3DMode) {
+                addShapeTo3DScene(shape, rotationState.layerId, rotationState.shapeIndex, true);
+            }
+            
+            await customAlert(`Element rotated by ${angle} degrees.`);
+            resetRotationState();
+            drawTotalsBox();
+        } else {
+            await customAlert("Please click on a roof member or a placed truss to rotate it.");
+        }
+        return;
+    }
+   
+   if (currentMode === 'distance-marker') {
+       const mousePoint = { x: iX, y: iY };
+       const found = findShapeAtPoint(iX, iY);
+   
+       if (found && found.shape.type === 'roof-member') {
+           if (distanceMarkerState.memberShape !== found.shape) {
+               distanceMarkerState.memberShape = found.shape;
+               distanceMarkerState.measurements = [];
+               const projectedPoint2D = projectPointOnLineSegment(mousePoint, found.shape.points[0], found.shape.points[1]);
+               const projectedPoint3D = interpolate3DPoint(projectedPoint2D, found.shape);
+               distanceMarkerState.measurements.push({ point2D: projectedPoint2D, point3D: projectedPoint3D, distFromStart: 0, distFromLast: 0 });
+               await customAlert("First marker placed. Click again along the member to add more markers. Press 'Esc' to clear.");
+           } 
+           else {
+               const member = distanceMarkerState.memberShape;
+               const projectedPoint2D = projectPointOnLineSegment(mousePoint, member.points[0], member.points[1]);
+               const projectedPoint3D = interpolate3DPoint(projected2D, member);
+               const startPoint3D = distanceMarkerState.measurements[0].point3D;
+               const lastPoint3D = distanceMarkerState.measurements[distanceMarkerState.measurements.length - 1].point3D;
+               const distFromStart = projectedPoint3D.distanceTo(startPoint3D);
+               const distFromLast = projectedPoint3D.distanceTo(lastPoint3D);
+               distanceMarkerState.measurements.push({ point2D: projectedPoint2D, point3D: projectedPoint3D, distFromStart: distFromStart, distFromLast: distFromLast });
+           }
+       } else {
+            if (!distanceMarkerState.memberShape) {
+               await customAlert("Please click on a roof member to start measuring.");
+            }
+       }
+       draw(e.clientX - r.left, e.clientY - r.top);
+       return;
+   }
+
+   if (!getActiveLayer()) { customAlert("Please add or select a layer first."); return; }
+    
+    else if (currentMode === 'roof-member') {
+       if (memberDrawingState === 'idle') {
+           const startZ_str = await customPrompt("3D Point", "Enter START Z-coordinate (m):", "0.0");
+           if (startZ_str === null) { resetAllModes(); draw(); return; }
+           currentShape.points.push({ x: iX, y: iY, z: parseFloat(startZ_str) || 0 });
+           referenceStartPoint = { x: iX, y: iY };
+           memberDrawingState = 'defining_end_point';
+           await customAlert("Click on the member's END point (X, Y) on the canvas.");
+       } else if (memberDrawingState === 'defining_end_point') {
+           let endX = iX; let endY = iY; let endZ = null;
+           const startPoint = currentShape.points[0];
+
+           if (isShiftDown) {
+               const dx = Math.abs(endX - startPoint.x); const dy = Math.abs(endY - startPoint.y);
+               if (dx > dy) { endY = startPoint.y; } else { endX = startPoint.x; }
+           }
+
+           // --- NEW: ADVANCED SMART JOIN LOGIC ---
+           const possibleConnections = findNearbyConnectionPoints({x: endX, y: endY});
+           let joinConfirmed = false;
+
+           if (possibleConnections.length > 0) {
+               const choices = possibleConnections.map((conn, index) => ({
+                   id: String(index),
+                   text: `Join '${conn.name}' at Z=${conn.point3D.z.toFixed(2)}m`,
+                   color: '#4CAF50'
+               }));
+               choices.push({ id: 'manual', text: 'No, Set Z Manually', color: '#f44336' });
+
+               const title = possibleConnections.length > 1 ? 'Multiple Connections Found' : 'Join Members?';
+               const message = 'Select a connection point, or choose to set the Z-height manually.';
+               const choiceId = await choicePrompt(title, message, choices);
+               
+               if (choiceId && choiceId !== 'manual') {
+                   joinConfirmed = true;
+                   const selectedConnection = possibleConnections[parseInt(choiceId)];
+                   endZ = selectedConnection.point3D.z;
+                   endX = selectedConnection.point2D.x;
+                   endY = selectedConnection.point2D.y;
+                   await customAlert(`Joint created! Member will connect at Z = ${endZ.toFixed(3)} m.`);
+               }
+           }
+           
+           if (!joinConfirmed) {
+               const horizontalDistPx = Math.hypot(endX - startPoint.x, endY - startPoint.y);
+               const horizontalDistM = horizontalDistPx / pixelsPerMeter;
+               const promptedEndZ = await zCoordPromptWithPitch("Set End Point Elevation", startPoint.z, horizontalDistM);
+               if (promptedEndZ === null) { resetAllModes(); draw(); return; }
+               endZ = promptedEndZ;
+           }
+
+           if (endZ !== null) {
+               currentShape.points.push({ x: endX, y: endY, z: endZ });
+               await finalizeShape();
+           }
+       }
+    } else if (currentMode === 'roof-covering') { 
+       const z_str = await customPrompt(`Set Point ${currentShape.points.length + 1} Elevation`, "Enter Z-coordinate (m):", "0.0", 'text');
+       if (z_str === null || isNaN(parseFloat(z_str))) { return; }
+       const z = parseFloat(z_str);
+       currentShape.points.push({ x: iX, y: iY, z: z });
+       if (currentShape.points.length === 1) {
+           referenceStartPoint = { x: iX, y: iY };
+       }
+    } 
+    draw(e.clientX - r.left, e.clientY - r.top);
+}
+         
+         async function onKeyDown(e) {
+                if (e.key === 'Shift') {
+                     isShiftDown = true;
+                    }
+              if (e.key === 'Escape') {
+                 if (selectionState.selectedShape) resetSelectionState();
+                 else if (mirrorState.selectedShape) resetMirrorState();
+                 else if (rotationState.selectedShape) resetRotationState(); // NEW
+                 if (lineToolState.isActive) { // Add this block
+                     lineToolState = { isActive: false, points: [] };
+                 }
+                 else if (distanceMarkerState.memberShape) {
+                    distanceMarkerState = { memberShape: null, measurements: [] };
+                 }
+                 else if (trussDesignerState.isActive) {
+                    trussDesignerState.currentMember = { points: [] };
+                    drawTrussDesigner();
+                 }
+                 else if (trussDesignerState.placementStep !== 'idle') {
+                    await resetAllModes();
+                    document.getElementById('drawMode').value = 'move';
+                    document.getElementById('drawMode').dispatchEvent(new Event('change'));
+                 }
+                 else { resetAllModes(); scaleMode = false; }
+              } else if (e.key === 'Enter') {
+                  if (currentShape.type === 'roof-covering' && currentShape.points.length >= 3) {
+                      currentShape.isClosed = true;
+                      await finalizeShape();
+                  }
+              }
+             draw();
+         }
+ 
+         // --- Core Application Logic ---
+         async function finalizeShape() {
+             angleIndicator.style.visibility = 'hidden';
+             referenceStartPoint = null;
+             let newShape = { ...currentShape };
+             if (newShape.type === 'roof-member') {
+                 if (newShape.points.length !== 2) { resetCurrentShape(); return; }
+                 const name = await customPrompt("Element Properties", "Enter Member Name:", "Rafter");
+                 if (!name) { resetAllModes(); draw(); return; }
+                 const description = await customPrompt("Element Properties", "Enter Description (optional):", "", 'textarea');
+                 newShape.name = name;
+                 newShape.description = description;
+                 newShape.color = '#8B4513'; // MODIFIED: Set member color to brown
+                 newShape.width = parseFloat(document.getElementById('memberWidth').value) || 0.1;
+                 newShape.depth = parseFloat(document.getElementById('memberDepth').value) || 0.05;
+             } else if (newShape.type === 'roof-covering') {
+                 if (newShape.points.length < 3) { resetCurrentShape(); return; }
+                 const name = await customPrompt("Element Properties", "Enter Covering Name:", "Roof Sheeting");
+                 if (!name) { resetAllModes(); draw(); return; }
+                 const description = await customPrompt("Element Properties", "Enter Description (optional):", "", 'textarea');
+                 newShape.name = name;
+                 newShape.description = description;
+                 newShape.color = '#800000'; // MODIFIED: Set covering color to maroon
+                 newShape.thickness = parseFloat(document.getElementById('coveringThickness').value) || 0.02;
+             } else {
+                 resetCurrentShape();
+                 return;
+             }
+             getActiveLayer().shapes.push(newShape);
+             if (is3DMode) addShapeTo3DScene(newShape, getActiveLayer().id, getActiveLayer().shapes.length - 1);
+             resetCurrentShape();
+             drawTotalsBox();
+             draw();
+         }
+         
+        // --- Truss Designer Functions ---
+
+        async function startTrussDesigner() {
+            const name = await customPrompt("Truss Design", "Enter a name for this truss type:", "Truss-A");
+            if (!name) { 
+                document.getElementById('drawMode').value = 'move';
+                document.getElementById('drawMode').dispatchEvent(new Event('change'));
+                return; 
+            }
+            trussDesignerState.trussName = name;
+
+            const baseZ_str = await customPrompt("Truss Design", "Enter the base elevation (Z-coordinate) for the bottom of the truss (m):", "3.0");
+            if (baseZ_str === null || isNaN(parseFloat(baseZ_str))) { 
+                document.getElementById('drawMode').value = 'move';
+                document.getElementById('drawMode').dispatchEvent(new Event('change'));
+                return; 
+            }
+            trussDesignerState.baseZ = parseFloat(baseZ_str);
+            
+            trussDesignerState.isActive = true;
+            document.getElementById('trussDesignerContainer').style.display = 'flex'; // Changed to flex
+            resize(); // This will set up canvas size and call drawTrussDesigner
+        }
+
+        // Replace the existing drawTrussDesigner function entirely with this one
+
+// Replace the existing drawTrussDesigner function entirely with this one
+
+function drawTrussDesigner(cursorX = null, cursorY = null) {
+    // 1. Setup Canvas
+    trussCtx.setTransform(1, 0, 0, 1, 0, 0);
+    trussCtx.fillStyle = '#2a2a2a';
+    trussCtx.fillRect(0, 0, trussCanvas.width, trussCanvas.height);
+    trussCtx.translate(trussOriginX, trussOriginY);
+
+    // 2. Draw Grid (1 square = 1 meter)
+    trussCtx.strokeStyle = '#444';
+    trussCtx.lineWidth = 1;
+    for (let x = -trussOriginX; x < trussCanvas.width - trussOriginX; x += trussScale) {
+        trussCtx.beginPath(); trussCtx.moveTo(x, -trussOriginY); trussCtx.lineTo(x, trussCanvas.height - trussOriginY); trussCtx.stroke();
+    }
+    for (let y = -trussOriginY; y < trussCanvas.height - trussOriginY; y += trussScale) {
+        trussCtx.beginPath(); trussCtx.moveTo(-trussOriginX, y); trussCtx.lineTo(trussCanvas.width - trussOriginX, y); trussCtx.stroke();
+    }
+    trussCtx.strokeStyle = '#888';
+    trussCtx.lineWidth = 2;
+    trussCtx.beginPath(); trussCtx.moveTo(-10, 0); trussCtx.lineTo(10, 0); trussCtx.stroke();
+    trussCtx.beginPath(); trussCtx.moveTo(0, -10); trussCtx.lineTo(0, 10); trussCtx.stroke();
+
+    // 3. Draw Permanent Shapes
+    // Draw all completed truss members
+    trussDesignerState.members.forEach(member => drawShape(trussCtx, member, '#4CAF50', 'transparent', 3, 1));
+    // Draw all completed measurement lines using the special 'measurement-line' type
+    trussDesignerState.lines.forEach(line => drawShape(trussCtx, { ...line, type: 'measurement-line' }, '#FF0000', 'transparent', 2, 1));
+
+    // 4. Handle Live Previews and Cursor Info
+    const bounds = trussCanvas.getBoundingClientRect();
+    const relCursorX = cursorX ? cursorX - bounds.left : null;
+    const relCursorY = cursorY ? cursorY - bounds.top : null;
+    
+    if (relCursorX !== null) {
+        const designX = relCursorX - trussOriginX;
+        const designY = relCursorY - trussOriginY;
+
+        const tool = trussDesignerState.tool;
+        const drawingPoints = tool === 'draw-member' ? trussDesignerState.currentMember.points : trussDesignerState.currentLine.points;
+
+        // THIS IS THE NEW, WORKING LIVE PREVIEW LOGIC
+        if (drawingPoints.length === 1) {
+            const start = drawingPoints[0];
+
+            // A. Draw the preview line that follows the cursor
+            trussCtx.beginPath();
+            trussCtx.moveTo(start.x, start.y);
+            trussCtx.lineTo(designX, designY);
+            
+            if (tool === 'draw-member') {
+                trussCtx.strokeStyle = '#4CAF50'; // Green for members
+                trussCtx.lineWidth = 3;
+                trussCtx.setLineDash([]);
+            } else { // 'draw-line' tool
+                trussCtx.strokeStyle = '#FF0000'; // Red for measurement lines
+                trussCtx.lineWidth = 2;
+                trussCtx.setLineDash([5, 5]);
+            }
+            trussCtx.stroke();
+            trussCtx.setLineDash([]); // Reset for other drawing
+
+            // B. Calculate and display live text (Length and Angle)
+            const dx = designX - start.x;
+            const dy = designY - start.y;
+            const dist = Math.hypot(dx, dy) / trussScale; // Convert pixels to meters
+            const angle = Math.atan2(-dy, dx) * 180 / Math.PI; // Invert Y for correct angle
+
+            // Draw text in screen space so it's always readable and next to the cursor
+            trussCtx.save();
+            trussCtx.setTransform(1, 0, 0, 1, 0, 0); 
+            trussCtx.font = '14px Arial';
+            trussCtx.fillStyle = '#FFFFFF';
+            trussCtx.shadowColor = 'black';
+            trussCtx.shadowBlur = 5;
+            trussCtx.textAlign = 'left';
+            trussCtx.fillText(`L: ${dist.toFixed(2)}m, A: ${angle.toFixed(1)}°`, relCursorX + 20, relCursorY - 15);
+            trussCtx.restore();
+        }
+
+        // 5. Draw Cursor Decorations (Crosshairs and Eraser) in Screen Space
+        trussCtx.setTransform(1, 0, 0, 1, 0, 0); 
+        
+        if (tool === 'eraser') {
+            trussCtx.beginPath();
+            trussCtx.arc(relCursorX, relCursorY, ERASER_RADIUS, 0, 2 * Math.PI);
+            trussCtx.strokeStyle = 'red';
+            trussCtx.lineWidth = 1.5;
+            trussCtx.stroke();
+        }
+        
+        // ALWAYS draw crosshairs, regardless of the tool
+        trussCtx.strokeStyle = '#FF00FF'; // Magenta crosshair
+        trussCtx.lineWidth = 0.8;
+        trussCtx.beginPath();
+        trussCtx.moveTo(relCursorX, 0); trussCtx.lineTo(relCursorX, trussCanvas.height);
+        trussCtx.moveTo(0, relCursorY); trussCtx.lineTo(trussCanvas.width, relCursorY);
+        trussCtx.stroke();
+    }
+}
+// Place this new helper function near the other truss designer functions
+
+function findTrussShapeAtPoint(designX, designY) {
+    const hitRadius = (ERASER_RADIUS / 1.0); // No scale in designer, so scale is 1
+    // Check members
+    for (let i = trussDesignerState.members.length - 1; i >= 0; i--) {
+        const member = trussDesignerState.members[i];
+        if (distToSegment({x: designX, y: designY}, member.points[0], member.points[1]) < hitRadius) {
+            return { type: 'member', index: i };
+        }
+    }
+    // Check lines
+    for (let i = trussDesignerState.lines.length - 1; i >= 0; i--) {
+        const line = trussDesignerState.lines[i];
+        if (distToSegment({x: designX, y: designY}, line.points[0], line.points[1]) < hitRadius) {
+            return { type: 'line', index: i };
+        }
+    }
+    return null;
+}
+
+       // Replace the existing onTrussCanvasMouseMove function
+
+function onTrussCanvasMouseMove(e) {
+    if (!trussDesignerState.isActive) return;
+
+    // Handle eraser dragging
+    if (trussDesignerState.tool === 'eraser' && trussDesignerState.isErasing) {
+        const bounds = trussCanvas.getBoundingClientRect();
+        const designX = e.clientX - bounds.left - trussOriginX;
+        const designY = e.clientY - bounds.top - trussOriginY;
+        const found = findTrussShapeAtPoint(designX, designY);
+        if (found) {
+            if (found.type === 'member') trussDesignerState.members.splice(found.index, 1);
+            else if (found.type === 'line') trussDesignerState.lines.splice(found.index, 1);
+        }
+    }
+    
+    // Always redraw to show crosshairs and live previews
+    drawTrussDesigner(e.clientX, e.clientY);
+}
+
+        // Replace the existing onTrussCanvasClick function
+
+async function onTrussCanvasClick(e) {
+    if (!trussDesignerState.isActive || e.button !== 0) return;
+    
+    const bounds = trussCanvas.getBoundingClientRect();
+    const p = { x: e.clientX - bounds.left - trussOriginX, y: e.clientY - bounds.top - trussOriginY };
+
+    if (trussDesignerState.tool === 'draw-member') {
+        trussDesignerState.currentMember.points.push(p);
+        if (trussDesignerState.currentMember.points.length === 2) {
+            const properties = await promptForTrussMemberProperties({});
+            if (properties) {
+                // Finalize the member
+                trussDesignerState.members.push({ points: [...trussDesignerState.currentMember.points], ...properties });
+            }
+            // Reset for the next member
+            trussDesignerState.currentMember = { points: [] };
+        }
+    } else if (trussDesignerState.tool === 'draw-line') {
+        trussDesignerState.currentLine.points.push(p);
+        if (trussDesignerState.currentLine.points.length === 2) {
+            // Finalize the measurement line
+            trussDesignerState.lines.push({ points: [...trussDesignerState.currentLine.points] });
+            // Reset for the next measurement line
+            trussDesignerState.currentLine = { points: [] };
+        }
+    } else if (trussDesignerState.tool === 'eraser') {
+        trussDesignerState.isErasing = true; // Flag for dragging
+        const found = findTrussShapeAtPoint(p.x, p.y);
+        if (found) {
+            if (found.type === 'member') trussDesignerState.members.splice(found.index, 1);
+            else if (found.type === 'line') trussDesignerState.lines.splice(found.index, 1);
+        }
+        // Add a listener to stop erasing when the mouse button is released anywhere
+        const stopErasing = () => {
+            trussDesignerState.isErasing = false;
+            window.removeEventListener('mouseup', stopErasing);
+        };
+        window.addEventListener('mouseup', stopErasing);
+    }
+    
+    drawTrussDesigner(e.clientX, e.clientY);
+}
+        
+        // NEW: Helper function to find unique intersection points in a truss design
+        function findTrussIntersections(members) {
+            const points = new Map();
+            const precision = 3; // Use 3 decimal places for rounding to merge close points
+            
+            members.forEach(member => {
+                member.points.forEach(p => {
+                    const key = `${p.x.toFixed(precision)},${p.y.toFixed(precision)}`;
+                    if (!points.has(key)) {
+                        points.set(key, {x: p.x, y: p.y});
+                    }
+                });
+            });
+
+            return Array.from(points.values());
+        }
+        
+        async function finishTrussDesign() {
+            if (trussDesignerState.members.length === 0) {
+                await customAlert("Truss design is empty. Please draw at least one member or cancel.");
+                return;
+            }
+
+            // NEW: Logic for fastener count
+            const intersections = findTrussIntersections(trussDesignerState.members);
+            let totalFasteners = 0;
+            if (intersections.length > 0) {
+                await customAlert(`Truss design has ${intersections.length} connection points. Please specify the number of fasteners (nails/bolts) for each.`);
+                for (const point of intersections) {
+                    const x_meters = (point.x / trussScale).toFixed(2);
+                    const y_meters = (-point.y / trussScale).toFixed(2); // Y is inverted in display
+                    const countStr = await customPrompt("Fastener Count", `Enter number of nails/bolts for connection at (X: ${x_meters}m, Y: ${y_meters}m):`, "4");
+                    const count = parseInt(countStr, 10);
+                    if (countStr !== null && !isNaN(count) && count > 0) {
+                        totalFasteners += count;
+                    }
+                }
+                await customAlert(`Total fasteners for this truss: ${totalFasteners}.`);
+                trussDesignerState.totalFasteners = totalFasteners;
+            }
+            // ---
+
+            trussDesignerState.designedTruss = [...trussDesignerState.members];
+            trussDesignerState.isActive = false;
+            document.getElementById('trussDesignerContainer').style.display = 'none';
+            trussDesignerState.placementStep = 'defining_start';
+            await customAlert("Design complete. On the main plan, click to define the truss start position.");
+            draw();
+        }
+
+        async function cancelTrussDesign() {
+            trussDesignerState.isActive = false;
+            document.getElementById('trussDesignerContainer').style.display = 'none';
+            await resetAllModes();
+            document.getElementById('drawMode').value = 'move'; // Revert to a safe mode
+            document.getElementById('drawMode').dispatchEvent(new Event('change'));
+            draw();
+        }
+
+        async function placeDesignedTruss(startPt2D, endPt2D) {
+            const activeLayer = getActiveLayer();
+            if (!activeLayer) { customAlert("Cannot place truss: No active layer."); return; }
+
+            // MODIFIED: Find min/max X and max Y (lowest point)
+            let minX = Infinity, maxX = -Infinity, maxY = -Infinity;
+            trussDesignerState.designedTruss.forEach(member => {
+                member.points.forEach(p => {
+                    if (p.x < minX) minX = p.x;
+                    if (p.x > maxX) maxX = p.x;
+                    if (p.y > maxY) maxY = p.y;
+                });
+            });
+            const designWidth = maxX - minX;
+            if (designWidth < 1) { customAlert("Truss design is too narrow to place."); return; }
+            
+            const newTrussShape = {
+                type: 'placed-truss',
+                points: [startPt2D, endPt2D],
+                isClosed: false,
+                name: trussDesignerState.trussName,
+                description: `Placed Truss Assembly`,
+                color: '#8B4513', // Fallback/default color
+                width: parseFloat(document.getElementById('memberWidth').value) || 0.1, // Fallback width
+                depth: parseFloat(document.getElementById('memberDepth').value) || 0.05, // Fallback depth
+                baseZ: trussDesignerState.baseZ,
+                trussData: JSON.parse(JSON.stringify(trussDesignerState.designedTruss)),
+                designMeta: { minX, designWidth, maxY },
+                fastenerCount: trussDesignerState.totalFasteners, // NEW: Store fastener count
+            };
+
+            activeLayer.shapes.push(newTrussShape);
+            if (is3DMode) {
+                addShapeTo3DScene(newTrussShape, activeLayer.id, activeLayer.shapes.length - 1);
+            }
+            draw();
+            drawTotalsBox();
+        }
+
+        // --- Layer Functions ---
+        function getActiveLayer() { return layers.find(l => l.id === activeLayerId); }
+        async function addLayer(name) { const layerName = (typeof name === 'string' && name) || await customPrompt("New Layer", "Enter layer name:", `Layer ${layers.length + 1}`); if (!layerName) return; const newLayer = { id: Date.now(), name: layerName, visible: true, shapes: [] }; layers.push(newLayer); setActiveLayer(newLayer.id); }
+        async function deleteLayer() { /* ... (to be implemented) ... */ }
+        function setActiveLayer(layerId) { activeLayerId = layerId; updateLayersList(); }
+        function toggleLayerVisibility(layerId, event) { event.stopPropagation(); const layer = layers.find(l => l.id === layerId); if (layer) { layer.visible = !layer.visible; if (is3DMode) { renderAllShapesIn3D(); } updateLayersList(); draw(); drawTotalsBox(); } }
+        function updateLayersList() { const listElement = document.getElementById('layersList'); listElement.innerHTML = ''; layers.forEach(layer => { const li = document.createElement('li'); li.className = layer.id === activeLayerId ? 'active' : ''; li.addEventListener('click', () => setActiveLayer(layer.id)); li.innerHTML = ` <input type="checkbox" ${layer.visible ? 'checked' : ''} onclick="toggleLayerVisibility(${layer.id}, event)"> <span title="${layer.name}">${layer.name}</span> `; listElement.appendChild(li); }); }
+
+         // --- 3D Functions ---
+         function toggle3DView() { is3DMode = !is3DMode; document.getElementById('elementInfoBox').style.display = is3DMode ? 'block' : 'none'; threeDContainer.style.visibility = is3DMode ? 'visible' : 'hidden'; if (is3DMode) { initialize3DScene(); renderAllShapesIn3D(); animate3D(); } else { if (animationFrameId) cancelAnimationFrame(animationFrameId); tooltip.style.visibility = 'hidden'; } }
+         function initialize3DScene() { if (scene) return; scene = new THREE.Scene(); scene.background=new THREE.Color(0x282828); camera=new THREE.PerspectiveCamera(75, threeDContainer.clientWidth/threeDContainer.clientHeight, 0.1, 5000); const vS=Math.max(canvas.width,canvas.height)/pixelsPerMeter/scale*1.2; camera.position.set(vS*0.3,-vS*0.7,vS*0.8); camera.lookAt(0,0,0); renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(threeDContainer.clientWidth,threeDContainer.clientHeight); threeDContainer.appendChild(renderer.domElement); scene.add(new THREE.AmbientLight(0xcccccc,0.8)); const dL=new THREE.DirectionalLight(0xffffff,0.7); dL.position.set(0.5,-1,1).normalize(); scene.add(dL); controls=new THREE.OrbitControls(camera,renderer.domElement); controls.enableDamping=true; const gH=new THREE.GridHelper(200, 200,0x0055ff,0x808080); gH.rotation.x=Math.PI/2; scene.add(gH); raycaster = new THREE.Raycaster(); threeDContainer.addEventListener('mousemove', onThreeDMouseMove); }
+         function onThreeDMouseMove(event) { event.preventDefault(); const rect = renderer.domElement.getBoundingClientRect(); mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1; mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1; tooltip.style.left = event.clientX + 15 + 'px'; tooltip.style.top = event.clientY + 15 + 'px'; }
+         function checkIntersections() {
+             if (!scene || !raycaster) return;
+             raycaster.setFromCamera(mouse, camera);
+             const intersects = raycaster.intersectObjects(scene.children, true);
+             if (intersects.length > 0) {
+                 let intersectedObject = intersects[0].object;
+                 let memberMaterial = intersectedObject.userData.material; // Grab material from the specific mesh if it exists
+                 
+                 // Traverse up to find the main group or mesh with shape data
+                 while (intersectedObject.parent && intersectedObject.userData.shapeIndex === undefined) {
+                     intersectedObject = intersectedObject.parent;
+                 }
+                 const layerId = intersectedObject.userData.layerId;
+                 const shapeIndex = intersectedObject.userData.shapeIndex;
+                 const layer = layers.find(l => l.id === layerId);
+
+                 if (layer && layer.shapes[shapeIndex]) {
+                     const shape = layer.shapes[shapeIndex];
+                     const metrics = calculateShapeMetrics(shape);
+                     let content = formatShapeInfo(shape, metrics);
+                     // Add individual member material to tooltip if available
+                     if (memberMaterial) {
+                        content += `<p><strong>Member Material:</strong> ${memberMaterial}</p>`;
+                     }
+                     tooltip.innerHTML = content;
+                     tooltip.style.visibility = 'visible';
+                     document.getElementById('elementInfoContent').innerHTML = content;
+                 } else {
+                     tooltip.style.visibility = 'hidden';
+                 }
+             } else {
+                 tooltip.style.visibility = 'hidden';
+             }
+         }
+         function formatShapeInfo(shape, metrics) {
+             let info = `<h4>${shape.name}</h4><hr style="border-color:#4CAF50;">`;
+             if (shape.description) { info += `<p style="font-style:italic;color:#ccc;">${shape.description}</p>`; }
+             if (shape.type === 'roof-member') {
+                 info += `<p><strong>3D Length:</strong> ${metrics.length.toFixed(2)} m</p>`;
+                 info += `<p><strong>Volume:</strong> ${metrics.volume.toFixed(2)} m³</p>`;
+                 info += `<p><strong>3D Pitch:</strong> ${metrics.pitch.toFixed(1)}°</p>`;
+             } else if (shape.type === 'roof-covering') {
+                 info += `<p><strong>Surface Area:</strong> ${metrics.area.toFixed(2)} m²</p>`;
+             } else if (shape.type === 'placed-truss') {
+                 info += `<p><strong>Total Member Length:</strong> ${metrics.length.toFixed(2)} m</p><p><strong>Total Member Volume:</strong> ${metrics.volume.toFixed(2)} m³</p>`;
+                 info += `<p><strong>Total Fasteners:</strong> ${metrics.fasteners}</p>`; // NEW
+                 const materials = new Set(shape.trussData.map(m => m.material).filter(Boolean));
+                 if (materials.size > 0) {
+                    info += `<p><strong>Materials:</strong> ${[...materials].join(', ')}</p>`;
+                 }
+             }
+             return info;
+         }
+         function fullClear3DScene() { if (scene) { while(scene.children.length > 0){ scene.remove(scene.children[0]); } } }
+         function animate3D() { if (!is3DMode || !scene) return; animationFrameId = requestAnimationFrame(animate3D); controls.update(); checkIntersections(); renderer.render(scene, camera); }
+         function renderAllShapesIn3D() { if (!scene) return; const shapesToRemove = scene.children.filter(c => c.userData.isShape); shapesToRemove.forEach(o => scene.remove(o)); layers.forEach(layer => { if (layer.visible) { layer.shapes.forEach((shape, index) => addShapeTo3DScene(shape, layer.id, index)); } }); }
+         function addShapeTo3DScene(shape, layerId, shapeIndex, isUpdate = false) {
+             if (!scene || !shape) return;
+             if (isUpdate && shape._3DObject) { scene.remove(shape._3DObject); }
+             
+             // FIXED: Use canvas dimensions as a fallback if no image is loaded
+             const iW = img.src ? img.width : canvas.width;
+             const iH = img.src ? img.height : canvas.height;
+             
+             let mesh;
+             if (shape.type === 'roof-member') {
+                 const mat = new THREE.MeshStandardMaterial({ color: shape.color || 0x00ff00, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide });
+                 const p1 = shape.points[0]; const p2 = shape.points[1];
+                 const startVec = new THREE.Vector3((p1.x - iW/2)/pixelsPerMeter, -(p1.y - iH/2)/pixelsPerMeter, p1.z);
+                 const endVec = new THREE.Vector3((p2.x - iW/2)/pixelsPerMeter, -(p2.y - iH/2)/pixelsPerMeter, p2.z);
+                 const length = startVec.distanceTo(endVec);
+                 if (length === 0) return;
+                 const geom = new THREE.BoxGeometry(shape.width, shape.depth, length);
+                 mesh = new THREE.Mesh(geom, mat);
+                 mesh.position.lerpVectors(startVec, endVec, 0.5);
+                 const direction = new THREE.Vector3().subVectors(endVec, startVec).normalize();
+                 mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
+             } else if (shape.type === 'roof-covering') {
+                const mat = new THREE.MeshStandardMaterial({ color: shape.color || 0x00ff00, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide });
+                const geom = new THREE.BufferGeometry();
+                const topVertices = [];
+                shape.points.forEach(p => {
+                    topVertices.push((p.x - iW/2) / pixelsPerMeter, -(p.y - iH/2) / pixelsPerMeter, p.z);
+                });
+                const indices = [];
+                for (let i = 1; i < shape.points.length - 1; i++) { indices.push(0, i, i + 1); }
+                const normal = new THREE.Triangle( new THREE.Vector3().fromArray(topVertices, 0), new THREE.Vector3().fromArray(topVertices, 3), new THREE.Vector3().fromArray(topVertices, 6) ).getNormal(new THREE.Vector3());
+                const bottomVertices = [];
+                for(let i=0; i < topVertices.length; i+=3) {
+                    const v = new THREE.Vector3().fromArray(topVertices, i);
+                    v.sub(normal.clone().multiplyScalar(shape.thickness));
+                    bottomVertices.push(v.x, v.y, v.z);
+                }
+                const allVertices = new Float32Array([...topVertices, ...bottomVertices]);
+                geom.setAttribute('position', new THREE.BufferAttribute(allVertices, 3));
+                const numPoints = shape.points.length;
+                const bottomIndices = indices.map(i => i + numPoints).reverse();
+                const sideIndices = [];
+                for (let i = 0; i < numPoints; i++) {
+                    const next = (i + 1) % numPoints;
+                    sideIndices.push(i, next, i + numPoints);
+                    sideIndices.push(next, next + numPoints, i + numPoints);
+                }
+                geom.setIndex([...indices, ...bottomIndices, ...sideIndices]);
+                geom.computeVertexNormals();
+                mesh = new THREE.Mesh(geom, mat);
+             } else if (shape.type === 'placed-truss') {
+                const group = new THREE.Group();
+                const startPt2D = shape.points[0]; const endPt2D = shape.points[1];
+                const dx = endPt2D.x - startPt2D.x, dy = endPt2D.y - startPt2D.y;
+                const angle = Math.atan2(dy, dx);
+                const placementLengthPx = Math.hypot(dx, dy);
+                const scaleFactor = (shape.designMeta.designWidth > 0) ? (placementLengthPx / shape.designMeta.designWidth) : 1;
+
+                shape.trussData.forEach(member => {
+                    const p1_design = member.points[0], p2_design = member.points[1];
+                    const transform = p => {
+                        const scaledX = (p.x - shape.designMeta.minX) * scaleFactor;
+                        const rotatedX = scaledX * Math.cos(angle);
+                        const rotatedY = scaledX * Math.sin(angle);
+                        const z = shape.baseZ - ((p.y - shape.designMeta.maxY) / trussScale);
+                        return new THREE.Vector3( (startPt2D.x + rotatedX - iW/2) / pixelsPerMeter, -((startPt2D.y + rotatedY) - iH/2) / pixelsPerMeter, z );
+                    };
+                    const startVec = transform(p1_design);
+                    const endVec = transform(p2_design);
+                    const length = startVec.distanceTo(endVec);
+                    if (length > 0.001) {
+                         // MODIFIED: Use per-member properties and material colors
+                         const memberWidth = member.width || shape.width;
+                         const memberDepth = member.depth || shape.depth;
+                         const isSteel = member.material === 'Steel';
+                         const memberColor = isSteel ? 0x808080 : shape.color; // Gray for Steel
+                         const mat = new THREE.MeshStandardMaterial({
+                             color: memberColor,
+                             roughness: isSteel ? 0.4 : 0.8,
+                             metalness: isSteel ? 0.9 : 0.1
+                         });
+                         const geom = new THREE.BoxGeometry(memberWidth, memberDepth, length);
+                         const memberMesh = new THREE.Mesh(geom, mat);
+                         memberMesh.userData.material = member.material; // Store material for tooltip
+                         memberMesh.position.lerpVectors(startVec, endVec, 0.5);
+                         const direction = new THREE.Vector3().subVectors(endVec, startVec).normalize();
+                         memberMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction);
+                         group.add(memberMesh);
+                    }
+                });
+                mesh = group;
+             }
+             if (mesh) {
+                 mesh.userData.layerId = layerId; mesh.userData.shapeIndex = shapeIndex; mesh.userData.isShape = true;
+                 scene.add(mesh); shape._3DObject = mesh;
+             }
+         }
+         
+         // --- Splash Screen & Page Load ---
+        window.addEventListener('load', () => {
+            const splash = document.getElementById('splashScreen');
+            const bar = document.getElementById('progressBar');
+            setTimeout(() => {
+                splash.style.opacity = '0';
+                setTimeout(() => {
+                    splash.style.display = 'none';
+                    setup(); // call main setup after splash
+                }, 500);
+            }, 1000);
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (layers.some(l => l.shapes.length > 0)) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+     </script>
+ </body>
+ </html>
